@@ -14,7 +14,7 @@
 //! - **Handle** special keys (e.g., arrow keys, page up/down) to move the
 //!   [Location] around.
 
-use std::cmp::min;
+use std::{cmp::min, env};
 
 use crate::{
     error::Result,
@@ -65,11 +65,19 @@ impl Editor {
     /// When `should_quit` is set to `true`, the loop breaks and we terminate.
     pub fn run(&mut self) -> Result<()> {
         terminal::initialize()?;
+        self.handle_args();
         self.repl()?;
         terminal::terminate()
     }
 
-    /// Internal REPL loop.  
+    fn handle_args(&mut self) {
+        let args: Vec<String> = env::args().collect();
+        if let Some(filename) = args.get(1) {
+            self.view.load(filename);
+        }
+    }
+
+    /// Internal REPL loop.
     /// Exits if `should_quit` becomes `true`.
     fn repl(&mut self) -> Result<()> {
         loop {

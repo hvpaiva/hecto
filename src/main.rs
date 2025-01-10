@@ -18,6 +18,5 @@ mod terminal;
 mod viewer;
 
 fn main() -> Result<()> {
-    Editor::default().run()?;
-    Ok(())
+    Editor::default().run()
 }

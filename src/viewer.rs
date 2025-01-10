@@ -9,30 +9,58 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Default, Clone)]
 pub struct View {
-    buffer: Buffer,
+    pub buffer: Buffer,
 }
 
 impl View {
+    pub fn load(&mut self, file_name: &str) {
+        if let Ok(buffer) = Buffer::load(file_name) {
+            self.buffer = buffer;
+        }
+    }
+
     /// Render all the rows of the editor’s screen content.
     ///
     /// Clears each line, then either render a welcome message row or an empty row
     /// (with a “~” in the first column).
     pub fn render(&self) -> Result<()> {
+        if self.buffer.is_empty() {
+            Self::render_welcome()?;
+        } else {
+            self.render_buffer()?;
+        }
+        Ok(())
+    }
+
+    fn render_welcome() -> Result<()> {
         let Size { height, .. } = terminal::size()?;
 
         for row in 0..height {
             terminal::clear_line()?;
 
-            if let Some(line) = self.buffer.lines.get(row) {
-                terminal::print(line)?;
-                terminal::print("\r\n")?;
-                continue;
+            if row == height.saturating_div(3) {
+                render_welcome_row()?;
+            } else {
+                render_empty_row()?;
             }
 
-            if row == height.saturating_div(3) {
-                render_welcome()?;
+            if row.saturating_add(1) < height {
+                terminal::print("\r\n")?;
+            }
+        }
+        Ok(())
+    }
+
+    fn render_buffer(&self) -> Result<()> {
+        let Size { height, .. } = terminal::size()?;
+
+        for row in 0..height {
+            terminal::clear_line()?;
+
+            if let Some(line) = self.buffer.get(row) {
+                terminal::print(line)?;
             } else {
-                render_empty()?;
+                render_empty_row()?;
             }
 
             if row.saturating_add(1) < height {
@@ -44,13 +72,13 @@ impl View {
 }
 
 /// Render an empty row, indicated by a single “~” in the leftmost column.
-fn render_empty() -> Result<()> {
+fn render_empty_row() -> Result<()> {
     terminal::print("~")
 }
 
 /// Render the “welcome message” row, centered horizontally.
 /// (We don’t require perfect centering; it’s just approximate.)
-fn render_welcome() -> Result<()> {
+fn render_welcome_row() -> Result<()> {
     let mut welcome_message = format!("{NAME} editor -- version {VERSION}");
     let width = terminal::size()?.width;
     let len = welcome_message.len();
@@ -73,7 +101,7 @@ mod tests {
     fn test_render_welcome() {
         // We'll call `super::render_welcome()` directly and check
         // the buffer for something like "~    <PackageName> editor -- version <Version>".
-        super::render_welcome().unwrap();
+        super::render_welcome_row().unwrap();
         terminal::execute().unwrap();
 
         let contents = take_out_contents();
@@ -87,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_render_empty() {
-        super::render_empty().unwrap();
+        super::render_empty_row().unwrap();
         terminal::execute().unwrap();
 
         let contents = take_out_contents();
