@@ -19,12 +19,10 @@ use std::cmp::min;
 use crate::{
     error::Result,
     terminal::{self, cursor, Position, Size},
+    viewer::View,
 };
 
 use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-
-const NAME: &str = env!("CARGO_PKG_NAME");
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Represents a specific place in the document (line/column in text).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -46,12 +44,14 @@ impl From<Location> for Position {
 ///
 /// Stores whether we should quit and the current [`Location`] in the text.
 /// Exposes a [`run()`][Editor::run] method to start the REPL.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub struct Editor {
     /// If set to `true`, the editor will exit on the next refresh.
     should_quit: bool,
     /// The current logical “Location” in the text (not necessarily on‐screen).
     location: Location,
+
+    view: View,
 }
 
 impl Editor {
@@ -130,56 +130,12 @@ impl Editor {
             terminal::clear_screen()?;
             terminal::print("Goodbye.\r\n")?;
         } else {
-            Editor::draw_rows()?;
+            self.view.render()?;
             // Move cursor to the editor’s current logical location
             cursor::move_to(self.location.into())?;
         }
         cursor::show()?;
         terminal::execute()
-    }
-
-    /// Draws all the rows of the editor’s screen content.
-    ///
-    /// Clears each line, then either draws a welcome message row or an empty row
-    /// (with a “~” in the first column).
-    fn draw_rows() -> Result<()> {
-        let Size { height, .. } = terminal::size()?;
-        for row in 0..height {
-            terminal::clear_line()?;
-
-            if row == height.saturating_div(3) {
-                Editor::draw_welcome_message_row()?;
-            } else {
-                Editor::draw_empty_row()?;
-            }
-
-            if row.saturating_add(1) < height {
-                terminal::print("\r\n")?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Draws the “welcome message” row, centered horizontally.
-    /// (We don’t require perfect centering; it’s just approximate.)
-    fn draw_welcome_message_row() -> Result<()> {
-        let mut welcome_message = format!("{NAME} editor -- version {VERSION}");
-        let width = terminal::size()?.width;
-        let len = welcome_message.len();
-
-        let padding = (width.saturating_sub(len)).saturating_div(2);
-        // We put a “~” at the start, then some spaces, then the message.
-        let leading_spaces = " ".repeat(padding.saturating_sub(1));
-        welcome_message = format!("~{leading_spaces}{welcome_message}");
-
-        // If the message is bigger than the width, we truncate
-        welcome_message.truncate(width);
-        terminal::print(&welcome_message)
-    }
-
-    /// Draws an empty row, indicated by a single “~” in the leftmost column.
-    fn draw_empty_row() -> Result<()> {
-        terminal::print("~")
     }
 
     /// Moves the editor’s logical location (row/col) in response to arrow keys, etc.
@@ -238,7 +194,7 @@ mod tests {
     //! our `io_provider::out()` approach.
 
     use super::*;
-    use crate::{io_provider::take_out_contents, terminal::execute};
+    use crate::io_provider::take_out_contents;
     use crossterm::event::{KeyCode, KeyModifiers};
 
     #[test]
@@ -309,55 +265,6 @@ mod tests {
         assert!(
             editor.location.col <= 10000,
             "Cursor should saturate horizontally"
-        );
-    }
-
-    #[test]
-    fn test_draw_welcome_message_row() {
-        // We'll call `Editor::draw_welcome_message_row()` directly and check
-        // the buffer for something like "~    <PackageName> editor -- version <Version>".
-        Editor::draw_welcome_message_row().unwrap();
-        execute().unwrap();
-
-        let contents = take_out_contents();
-        let out = String::from_utf8_lossy(&contents);
-        // We expect something like "~ <some spaces>my_crate editor -- version 1.0.0"
-        assert!(
-            out.contains("editor -- version"),
-            "Expected welcome message in output"
-        );
-    }
-
-    #[test]
-    fn test_draw_empty_row() {
-        Editor::draw_empty_row().unwrap();
-        execute().unwrap();
-
-        let contents = take_out_contents();
-        let out = String::from_utf8_lossy(&contents);
-        // Should just print "~"
-        assert!(out.contains('~'), "Expected a single '~' for empty row");
-    }
-
-    #[test]
-    fn test_draw_rows() {
-        // `draw_rows()` prints up to `terminal::size().height` lines.
-        // Let's call it and see if we get multiple lines with "~" or the welcome row.
-        Editor::draw_rows().unwrap();
-        execute().unwrap();
-
-        let contents = take_out_contents();
-        let out = String::from_utf8_lossy(&contents);
-        // We'll check at least for a bunch of "~" characters,
-        // as many as the terminal height (but we can't be certain what the terminal size is).
-        // Let's do a minimal check:
-        assert!(
-            out.contains('~'),
-            "Expected at least some empty row symbols (~)"
-        );
-        assert!(
-            out.contains("editor -- version"),
-            "Expected the welcome row somewhere in the output"
         );
     }
 
